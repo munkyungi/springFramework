@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+	"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+	
+<mapper namespace="Bbs">
+
+<!-- 글 목록 (검색, 페이징) -->
+<select id="bbslist" parameterType="mul.cam.a.dto.BbsParam" resultType="mul.cam.a.dto.BbsDto">
+	select seq, id, ref, step, depth, title, content, wdate, del, readcount
+	from 
+		( select row_number()over(order by ref desc, step asc) as rnum,
+			seq, id, ref, step, depth, title, content, wdate, del, readcount
+			from bbs 
+			where 1=1 
+			<if test="choice != null and choice != '' and search != null and search != ''">
+				<if test="choice == 'title'">
+					and title like concat('%', #{search}, '%')
+				</if>
+				<if test="choice == 'content'">
+					and content like concat('%', #{search}, '%')
+				</if>
+				<if test="choice == 'writer'">
+					and id=#{search}
+				</if>
+				and del=0
+			</if>
+			order by ref desc, step asc
+		) a
+		where rnum between #{start} and #{end}
+</select>
+
+<!-- 글의 총수 -->
+<select id="getAllBbs" parameterType="mul.cam.a.dto.BbsParam" resultType="Integer">
+	select ifnull(count(*), 0)
+	from bbs
+	<if test="choice != null and choice != '' and search != null and search != ''">
+		<if test="choice == 'title'">
+			where title like concat('%', #{search}, '%')
+		</if>
+		<if test="choice == 'content'">
+			where content like concat('%', #{search}, '%')
+		</if>
+		<if test="choice == 'writer'">
+			where id=#{search}
+		</if>
+		and del=0
+	</if>
+</select>
+
+<!-- 글 1개 가져오기 -->
+<select id="getBbs" parameterType="Integer" resultType="mul.cam.a.dto.BbsDto">
+	select seq, id, ref, step, depth, title, content, wdate, del, readcount 
+	from bbs 
+	where seq=#{seq}
+</select>
+
+
+<!-- 글쓰기 -->
+<insert id="addBbslist" parameterType="mul.cam.a.dto.BbsDto">
+	insert into bbs(id, ref, step, depth, title, content, wdate, del, readcount)
+	values(#{id}, (select ifnull(max(ref), 0)+1 from bbs b), 0, 0, #{title}, #{content}, now(), 0, 0)
+</insert>
+
+<!-- 글 수정 -->
+<update id="updateBbs" parameterType="mul.cam.a.dto.BbsDto">
+	update bbs set title=#{title}, content=#{content} 
+	where seq=#{seq}
+</update>
+
+<!-- 글 삭제 -->
+<update id="deleteBbs" parameterType="Integer">
+	update bbs set del=1 
+	where seq=#{seq}
+</update>
+
+
+<!-- 답글 -->
+<update id="answerUp" parameterType="Integer">
+	update bbs 
+	set step=step+1 
+	where ref=(select ref from (select ref from bbs a where seq=#{seq}) A) 
+	and step>(select step from (select step from bbs b where seq=#{seq}) B)
+</update>
+
+<insert id="answerIn" parameterType="mul.cam.a.dto.BbsDto">
+	insert into bbs(id, ref, step, depth, title, content, wdate, del, readcount) 
+	values(#{id}, 
+		(select ref from bbs a where seq=#{seq}), 
+		(select step from bbs b where seq=#{seq}) +1, 
+		(select depth from bbs c where seq=#{seq}) +1, 
+		#{title}, #{content}, now(), 0, 0)
+</insert>
+
+
+<!-- 댓글 -->
+<insert id="commentWrite" parameterType="mul.cam.a.dto.BbsComment">
+	insert into bbscomment(seq, id, content, wdate)
+	values(#{seq}, #{id}, #{content}, now())
+</insert>
+
+<select id="commentList" parameterType="Integer" resultType="mul.cam.a.dto.BbsComment">
+	select seq, id, content, wdate
+	from bbscomment
+	where seq=#{seq}
+	order by wdate desc
+</select>
+
+
+<!-- 조회한 계정 기록 찾기 -->
+<select id="getBbsRead" parameterType="hashmap" resultType="Integer">
+	select count(*)
+	from bbsReadCount
+	where id=#{id} and bbsSeq=#{seq}
+</select>
+
+<!-- 조회한 계정 기록 남기기 -->
+<insert id="addBbsRead" parameterType="hashmap">
+	insert into bbsReadCount(id, bbsSeq)
+	values(#{id}, #{seq})
+</insert>
+
+<!-- 글 조회수 증가 -->
+<update id="updateReadCount" parameterType="Integer">
+	update bbs set readcount=readcount+1
+	where seq=#{seq}
+</update>
+
+</mapper>
